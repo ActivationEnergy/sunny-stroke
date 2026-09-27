@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f1e8">
+  <meta name="description" content="小晴笔顺 Sunny Stroke：检索汉字笔画，逐笔查看字形与书写顺序。">
+  <title>小晴笔顺 · Sunny Stroke</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='13' fill='%232b3936'/%3E%3Ctext x='32' y='45' text-anchor='middle' font-size='42' fill='%23f9f3e9'%3E晴%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./data/index.js" defer></script>
+  <script src="./data/dictionary.js" defer></script>
+  <script src="./data/audit-status.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="./" aria-label="小晴笔顺首页"><span class="brand-seal" aria-hidden="true">晴</span><span><strong>小晴笔顺</strong><small>SUNNY STROKE</small></span></a>
+    <nav><a href="#about">数据说明</a><a href="./ARPHICPL.TXT" target="_blank" rel="noopener">数据许可 ↗</a></nav>
+  </header>
+
+  <main class="page">
+    <h1 class="sr-only">小晴笔顺 · 汉字笔顺查询</h1>
+    <div class="workspace-head">
+    <section class="lookup" aria-label="汉字检索">
+      <form id="search-form" role="search"><label for="query">查找汉字</label><div class="search-line"><span class="search-icon" aria-hidden="true">⌕</span><input id="query" type="search" autocomplete="off" enterkeyhint="search" placeholder="输入汉字，即时查看" maxlength="80"></div></form>
+      <div class="quick-row"><span>试着查</span><div id="examples" class="chip-list"><button type="button" data-char="永">永</button><button type="button" data-char="好">好</button><button type="button" data-char="春">春</button><button type="button" data-char="书">书</button><button type="button" data-char="龙">龙</button></div><button id="random" class="random" type="button">随机一字 ↗</button></div>
+      <div id="matches" class="matches" hidden><div class="matches-heading"><strong>选择一个字</strong><span id="matches-count"></span></div><div id="matches-list" class="matches-list"></div></div>
+      <p id="search-message" class="search-message" role="status" aria-live="polite"></p>
+    </section>
+    <div id="selected-summary" class="selected-summary" hidden>
+      <div class="viewer-heading"><div><h2 id="character-title"><span id="character">永</span><span id="stroke-count" class="stroke-count">5 画</span></h2><div class="dictionary-note"><span id="pinyin" class="pinyin"></span><span id="definition" class="definition"></span></div><p id="review-status" class="review-status"></p><div id="standard-code" class="standard-code" hidden><strong>规范笔顺序号</strong><span id="standard-digits"></span><small>1 横 · 2 竖 · 3 撇 · 4 点 · 5 折。序号表示笔形类别，具体字形请以规范原图为准。</small></div><p id="viewer-subtitle" class="viewer-subtitle">已写的笔画为深色，当前一笔以朱红标出。</p></div><div class="viewer-actions"><button id="copy-link" type="button">复制此字链接</button><button id="show-all" type="button">查看完整字形</button></div></div>
+    </div>
+    </div>
+
+    <section id="viewer" class="viewer" aria-labelledby="character-title" data-mobile-view="stage" hidden>
+      <div class="view-tabs" role="tablist" aria-label="笔画查看方式"><button id="tab-stage" type="button" role="tab" aria-controls="stage-panel" aria-selected="true">大字逐笔</button><button id="tab-sequence" type="button" role="tab" aria-controls="sequence-panel" aria-selected="false">全部步骤</button></div>
+      <div class="viewer-grid"><div id="stage-panel" class="canvas-panel" data-view="stage" role="tabpanel" aria-labelledby="tab-stage"><div class="canvas-topline"><span>书写进度</span><span id="progress-text">01 / 05</span></div><div id="stage" class="stage" role="img"></div><div class="controls"><button id="previous" type="button" aria-label="上一笔">← <span>上一笔</span></button><span id="step-label" aria-live="polite"></span><button id="next" type="button" aria-label="下一笔"><span>下一笔</span> →</button></div><div class="playback"><button id="play" class="play-button" type="button" aria-label="从第一笔开始自动循环播放，每秒一笔">▶ 自动播放</button><button id="stop" class="stop-button" type="button" disabled>■ 停止</button><span id="playback-status" class="playback-status" role="status" aria-live="polite">每 1 秒一笔，末笔后循环</span></div><div class="keyboard-note">键盘 ← → 可切换笔画；手动选笔会停止播放</div></div><div id="sequence-panel" class="sequence-panel" data-view="sequence" role="tabpanel" aria-labelledby="tab-sequence"><div class="sequence-heading"><div><h3>从第一笔，到最后一笔</h3></div><span id="sequence-total"></span></div><div id="sequence" class="sequence"></div></div></div>
+    </section>
+
+    <section id="about" class="about"><div><p class="section-index">关于这份字帖</p><h2>字形有出处，<br>笔顺待核验。</h2></div><div class="about-copy"><p>逐笔图形来自 <a href="https://github.com/skishore/makemeahanzi" target="_blank" rel="noopener">Make Me a Hanzi</a> 与 <a href="https://github.com/parsimonhi/animCJK" target="_blank" rel="noopener">AnimCJK</a>，拼音和英文释义来自 Make Me a Hanzi 的字典。图形数据使用 <a href="./ARPHICPL.TXT">Arphic Public License</a>，字典数据使用 <a href="./LGPL.txt">LGPL v3 或更新版本</a>；完整转换记录见 <a href="./data-sources.html">数据来源说明</a>。</p><p><a href="https://www.moe.gov.cn/jyb_sjzl/ziliao/A19/202103/t20210318_520473.html" target="_blank" rel="noopener">GF 0023—2020《通用规范汉字笔顺规范》</a>收录 8105 字。本站有其中 7168 字的逐笔图形，仍缺 937 字；16 字的来源图形与规范笔画数不同，页面保留原图形顺序并展示规范编码。完整笔顺和字形仍待逐字核验。</p></div></section>
+  </main>
+  <footer><span>小晴笔顺 · Sunny Stroke</span><span>笔画图形：<a href="https://github.com/skishore/makemeahanzi" target="_blank" rel="noopener">Make Me a Hanzi</a> / <a href="https://github.com/parsimonhi/animCJK" target="_blank" rel="noopener">AnimCJK</a> · <a href="./data-sources.html">来源与 APL 许可</a></span></footer>
+</body>
+</html>

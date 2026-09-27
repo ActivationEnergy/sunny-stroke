@@ -1,0 +1,19 @@
+{
+  "standardCount": 8105,
+  "graphicCount": 9876,
+  "coveredCount": 7168,
+  "missingCount": 937,
+  "missingByPlane": {
+    "BMP": 742,
+    "supplementary": 195
+  },
+  "extraGraphicCount": 2708,
+  "strokeCountMismatchCount": 16,
+  "pdfSha256": "0ff0890afc34c5e486edeebafb05350dec69a7bf0d1d75044d7d3f7b722ec3d0",
+  "indexSha256": "0abb59104738751023ac818323f058eddbf12c4a2e9536a1fad9b00758a0b8d0",
+  "statusMeaning": {
+    "missing_graphic": "No SVG stroke paths; must be authored or sourced and reviewed",
+    "stroke_count_mismatch": "Existing SVG stroke count differs from the printed standard",
+    "count_match_order_unverified": "Stroke count agrees; shape, direction, and order still require review"
+  }
+}
