@@ -208,8 +208,10 @@ function updateStageUI() {
   elements.label.textContent = stageComplete ? `书写完成 · ${total} / ${total} 笔` : `第 ${activeStep} / ${total} 笔`;
   elements.previous.disabled = activeStep === 1;
   elements.next.disabled = activeStep === total;
-  elements.sequence.querySelectorAll("button").forEach((button, offset) => {
-    if (!stageComplete && offset + 1 === activeStep) button.setAttribute("aria-current", "step");
+  elements.sequence.querySelectorAll("button").forEach((button) => {
+    const current = button.dataset.complete === "true"
+      ? stageComplete : !stageComplete && Number(button.dataset.step) === activeStep;
+    if (current) button.setAttribute("aria-current", "step");
     else button.removeAttribute("aria-current");
   });
   updatePlaybackUI();
@@ -311,20 +313,22 @@ function renderCharacter() {
     elements.reviewStatus.dataset.mismatch = "false";
   }
   elements.sequenceTotal.textContent = `共 ${total} 笔`;
-  const cards = activeStrokes.map((_, offset) => {
-    const step = offset + 1;
+  const cards = Array.from({ length: total + 1 }, (_, offset) => {
+    const complete = offset === total;
+    const step = complete ? total : offset + 1;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "step-card";
     button.dataset.step = String(step);
-    button.setAttribute("aria-label", `查看${activeCharacter}的第${step}笔`);
+    if (complete) button.dataset.complete = "true";
+    button.setAttribute("aria-label", complete ? `查看${activeCharacter}的完整字形` : `查看${activeCharacter}的第${step}笔`);
     const number = document.createElement("span");
     number.className = "step-number";
-    number.textContent = formatStep(step);
+    number.textContent = complete ? "完成" : formatStep(step);
     const label = document.createElement("span");
     label.className = "step-caption";
-    label.textContent = `第 ${step} 笔`;
-    button.append(number, glyph(activeStrokes.slice(0, step), step, "small-glyph"), label);
+    label.textContent = complete ? "完整字形" : `第 ${step} 笔`;
+    button.append(number, glyph(activeStrokes.slice(0, step), step, "small-glyph", { highlightCurrent: !complete }), label);
     return button;
   });
   elements.sequence.replaceChildren(...cards);
@@ -463,7 +467,13 @@ for (const [current, other, view] of [[elements.tabStage, elements.tabSequence, 
 }
 elements.sequence.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-step]");
-  if (button) { stopPlayback(); activeStep = Number(button.dataset.step); setMobileView("stage"); renderStage({ animate: true }); }
+  if (button) {
+    stopPlayback();
+    activeStep = Number(button.dataset.step);
+    setMobileView("stage");
+    const complete = button.dataset.complete === "true";
+    renderStage({ animate: !complete, complete });
+  }
 });
 elements.query.addEventListener("focus", () => { stopPlayback(); selectQueryAfterPointer(); });
 elements.query.addEventListener("pointerup", (event) => {

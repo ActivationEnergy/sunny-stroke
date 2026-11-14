@@ -113,7 +113,21 @@ function assertComplete(total) {
   assert.equal(svg.querySelectorAll(".stroke-done").length, total);
   assert.match(elements.get("step-label").textContent, /书写完成/);
   assert.match(elements.get("stage").attributes["aria-label"], /书写完成/);
-  assert.ok(elements.get("sequence").children.every((card) => !card.attributes["aria-current"]));
+  assert.ok(strokeCards().every((card) => !card.attributes["aria-current"]));
+  assert.equal(elements.get("sequence").children[total].attributes["aria-current"], "step");
+}
+function strokeCards() {
+  return elements.get("sequence").children.filter((card) => !card.dataset.complete);
+}
+function assertCompleteCard(total) {
+  const cards = elements.get("sequence").children;
+  assert.equal(cards.length, total + 1);
+  const card = cards[total];
+  assert.equal(card.dataset.complete, "true");
+  assert.equal(card.children[2].textContent, "完整字形");
+  assert.equal(card.children[1].querySelectorAll(".stroke-current").length, 0);
+  assert.equal(card.children[1].querySelectorAll(".stroke-done").length, total);
+  return card;
 }
 
 (async () => {
@@ -122,6 +136,7 @@ function assertComplete(total) {
   assert.equal(elements.get("character").textContent, "永");
   assert.match(elements.get("pinyin").textContent, /yǒng/);
   assert.match(elements.get("definition").textContent, /eternal/);
+  assertCompleteCard(5);
   assert.equal(elements.get("play").disabled, true);
   assert.equal(elements.get("stop").disabled, false);
   assert.equal([...timers.values()][0].delay, 1000);
@@ -183,7 +198,7 @@ function assertComplete(total) {
   elements.get("examples").listeners.click({ target: example });
   await flush();
   assert.equal(elements.get("stroke-count").textContent, "22 画");
-  assert.equal(elements.get("sequence").children.length, 22);
+  assert.equal(strokeCards().length, 22);
   assert.match(elements.get("review-status").textContent, /第 10–12 笔/);
   assert.ok(elements.get("stage").children[0].children[0].children[0].classes.has("stroke-fade-in"));
   const tenth = elements.get("sequence").children[9];
@@ -216,7 +231,7 @@ function assertComplete(total) {
   elements.get("examples").listeners.click({ target: example });
   await flush();
   assert.equal(elements.get("stroke-count").textContent, "14 画");
-  assert.equal(elements.get("sequence").children.length, 14);
+  assert.equal(strokeCards().length, 14);
   assert.equal(elements.get("standard-digits").textContent, "1 2 2 3 2 5 1 1 3 5 5 4");
 
   for (const character of [..."彟爇脩莿蒻薳藨"]) {
@@ -224,7 +239,7 @@ function assertComplete(total) {
     elements.get("examples").listeners.click({ target: example });
     await flush();
     const expected = window.HANZI_AUDIT.standardCounts[character];
-    assert.ok(elements.get("sequence").children.length > expected);
+    assert.ok(strokeCards().length > expected);
     assert.equal(elements.get("standard-code").hidden, false);
     assert.match(elements.get("review-status").textContent, /供参考/);
   }
@@ -319,6 +334,7 @@ function assertComplete(total) {
   assert.equal(elements.get("stop").disabled, true);
   assert.match(elements.get("playback-status").textContent, /只有一笔/);
   assertComplete(1);
+  assertCompleteCard(1);
 
   // Single playback finishes only after the final drawing event. Stopping
   // progression during that last drawing must not leave it permanently red.
@@ -424,6 +440,14 @@ function assertComplete(total) {
   const outline = elements.get("stage").children[0].querySelectorAll(".stroke-done")[9];
   assert.equal(outline.attributes.stroke, "#344c46");
   assert.equal(elements.get("sequence").children[9].children[1].querySelector(".stroke-current").attributes.stroke, "#b55443");
+  const fullCard = assertCompleteCard(22);
+  assert.equal(fullCard.children[1].querySelectorAll(".stroke-done")[9].attributes.stroke, "#344c46");
+  elements.get("play").listeners.click();
+  assert.equal(timers.size, 1);
+  elements.get("sequence").listeners.click({ target: fullCard });
+  assertComplete(22);
+  assert.equal(timers.size, 0);
+  assert.equal(elements.get("viewer").dataset.mobileView, "stage");
 
   // The CSS fallback also reports completion; a missing event becomes a
   // fully visible static character rather than a stuck red final stroke.
