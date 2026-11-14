@@ -12,6 +12,8 @@ const frames = new Map();
 let nextTimerId = 1;
 let nextFrameId = 1;
 let context;
+const warnings = [];
+const testConsole = { ...console, warn: (...args) => warnings.push(args) };
 
 class Element {
   constructor(tag = "div") {
@@ -27,14 +29,22 @@ class Element {
     this.selectionCount = 0;
     this.selected = false;
     this.classes = new Set();
-    this.classList = { add: (name) => this.classes.add(name) };
+    this.classList = { add: (name) => this.classes.add(name), remove: (name) => this.classes.delete(name) };
   }
   addEventListener(type, listener) { this.listeners[type] = listener; }
-  setAttribute(name, value) { this.attributes[name] = value; }
+  removeEventListener(type, listener) { if (this.listeners[type] === listener) delete this.listeners[type]; }
+  setAttribute(name, value) { this.attributes[name] = value; if (name === "class") this.classes = new Set(value.split(/\s+/)); }
+  hasAttribute(name) { return name in this.attributes; }
   removeAttribute(name) { delete this.attributes[name]; }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
-  querySelectorAll(selector) { return selector === "button" ? this.children.filter((child) => child.tagName === "BUTTON") : []; }
+  querySelectorAll(selector) {
+    return this.children.flatMap((child) => {
+      const matches = selector.startsWith(".") ? child.classes.has(selector.slice(1)) : child.tagName.toLowerCase() === selector;
+      return [...(matches ? [child] : []), ...child.querySelectorAll(selector)];
+    });
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   closest(selector) { return selector.startsWith("button") && this.tagName === "BUTTON" ? this : null; }
   focus() { document.activeElement = this; }
   select() { this.selectionCount++; this.selected = true; }
@@ -46,7 +56,7 @@ const document = {
   listeners: {},
   addEventListener(type, listener) { this.listeners[type] = listener; },
   getElementById(id) {
-    if (!elements.has(id)) elements.set(id, new Element());
+    if (!elements.has(id)) elements.set(id, new Element(id === "playback-mode" ? "select" : "div"));
     return elements.get(id);
   },
   createElement: (tag) => new Element(tag),
@@ -63,6 +73,7 @@ const document = {
 
 const window = {
   HANZI_SHARDS: {}, listeners: {},
+  matchMedia() { return { matches: false }; },
   addEventListener(type, listener) { this.listeners[type] = listener; },
   setTimeout(callback, delay) { const id = nextTimerId++; timers.set(id, { callback, delay }); return id; },
   clearTimeout(id) { timers.delete(id); },
@@ -71,7 +82,7 @@ const window = {
 };
 const location = { hash: "", href: "file:///docs/index.html" };
 const history = { replaceState(_state, _title, hash) { location.hash = hash; location.href = `file:///docs/index.html${hash}`; } };
-context = vm.createContext({ window, document, location, history, navigator: {}, console, setTimeout });
+context = vm.createContext({ window, document, location, history, navigator: {}, console: testConsole, setTimeout });
 
 for (const file of ["data/index.js", "data/dictionary.js", "data/audit-status.js", "app.js"]) {
   vm.runInContext(fs.readFileSync(path.join(site, file), "utf8"), context);
@@ -88,6 +99,21 @@ function fireFrame() {
   const [id, callback] = frames.entries().next().value;
   frames.delete(id);
   callback();
+}
+function finishFinalStroke() {
+  const svg = elements.get("stage").children[0];
+  const target = svg.querySelector("animate") || svg.querySelector(".stroke-current");
+  const type = target.tagName === "ANIMATE" ? "endEvent" : "animationend";
+  assert.ok(target.listeners[type], "final stroke must listen for actual animation completion");
+  target.listeners[type]({ target });
+}
+function assertComplete(total) {
+  const svg = elements.get("stage").children[0];
+  assert.equal(svg.querySelectorAll(".stroke-current").length, 0);
+  assert.equal(svg.querySelectorAll(".stroke-done").length, total);
+  assert.match(elements.get("step-label").textContent, /书写完成/);
+  assert.match(elements.get("stage").attributes["aria-label"], /书写完成/);
+  assert.ok(elements.get("sequence").children.every((card) => !card.attributes["aria-current"]));
 }
 
 (async () => {
@@ -238,12 +264,17 @@ function fireFrame() {
   assert.equal(timers.size, 1);
   const staleTimer = [...timers.values()][0];
   assert.equal(staleTimer.delay, 1000);
-  for (const step of [2, 3, 4, 1]) {
+  for (const step of [2, 3, 4]) {
     fireTimer();
     assert.equal(elements.get("step-label").textContent, `第 ${step} / 4 笔`);
     assert.equal(elements.get("sequence").children[step - 1].attributes["aria-current"], "step");
-    if (step === 4) assert.equal([...timers.values()][0].delay, 1600);
   }
+  assert.equal(elements.get("stage").children[0].querySelectorAll(".stroke-current").length, 1);
+  finishFinalStroke();
+  assertComplete(4);
+  assert.equal([...timers.values()][0].delay, 1600);
+  fireTimer();
+  assert.equal(elements.get("step-label").textContent, "第 1 / 4 笔");
   assert.ok(elements.get("stage").children[0].classes.has("is-loop-reset"));
   elements.get("stop").listeners.click();
   assert.equal(timers.size, 0);
@@ -287,5 +318,149 @@ function fireFrame() {
   assert.equal(elements.get("play").disabled, true);
   assert.equal(elements.get("stop").disabled, true);
   assert.match(elements.get("playback-status").textContent, /只有一笔/);
-  console.log("Smoke test passed: lookup, meanings, autoplay loop, stop, manual controls, and tab/character changes");
+  assertComplete(1);
+
+  // Single playback finishes only after the final drawing event. Stopping
+  // progression during that last drawing must not leave it permanently red.
+  example.dataset.char = "书";
+  elements.get("examples").listeners.click({ target: example });
+  await flush();
+  elements.get("stop").listeners.click();
+  const mode = elements.get("playback-mode");
+  mode.value = "once";
+  mode.listeners.change();
+  elements.get("play").listeners.click();
+  for (const step of [2, 3, 4]) fireTimer();
+  const oldWatchdog = [...timers.values()][0];
+  const oldSvg = elements.get("stage").children[0];
+  const oldTarget = oldSvg.querySelector("animate") || oldSvg.querySelector(".stroke-current");
+  const oldType = oldTarget.tagName === "ANIMATE" ? "endEvent" : "animationend";
+  const oldEnd = oldTarget.listeners[oldType];
+  oldEnd({ target: oldSvg }); // The loop-reset event must not finish a stroke.
+  assert.equal(oldSvg.querySelectorAll(".stroke-current").length, 1);
+  elements.get("stop").listeners.click();
+  assert.equal(timers.size, 1); // Current drawing can still complete.
+  finishFinalStroke();
+  assertComplete(4);
+  assert.equal(timers.size, 0);
+  assert.equal(elements.get("play").disabled, false);
+  assert.equal(elements.get("stop").disabled, true);
+  assert.ok(elements.get("sequence").children[3].children[1].querySelector(".stroke-current"));
+
+  elements.get("play").listeners.click();
+  oldEnd({ target: oldTarget });
+  oldWatchdog.callback();
+  assert.equal(elements.get("step-label").textContent, "第 1 / 4 笔");
+  mode.focus();
+  let prevented = false;
+  window.listeners.keydown({ key: "ArrowRight", preventDefault() { prevented = true; } });
+  assert.equal(prevented, false);
+  assert.equal(elements.get("step-label").textContent, "第 1 / 4 笔");
+  for (const step of [2, 3, 4]) fireTimer();
+  finishFinalStroke();
+  assertComplete(4);
+  assert.equal(timers.size, 0);
+
+  // All manual entrances use the same final-stroke rule.
+  const penultimate = elements.get("sequence").children[2];
+  elements.get("sequence").listeners.click({ target: penultimate });
+  assert.equal(elements.get("stage").children[0].querySelectorAll(".stroke-current").length, 1);
+  elements.get("next").listeners.click();
+  finishFinalStroke();
+  assertComplete(4);
+  elements.get("sequence").listeners.click({ target: elements.get("sequence").children[3] });
+  finishFinalStroke();
+  assertComplete(4);
+  elements.get("previous").listeners.click();
+  document.activeElement = new Element("body");
+  window.listeners.keydown({ key: "ArrowRight", preventDefault() {} });
+  finishFinalStroke();
+  assertComplete(4);
+
+  // Changes during a round apply at the end; changing a completed loop to
+  // once cancels its pending replay. Choosing loop while stopped doesn't start it.
+  elements.get("play").listeners.click();
+  mode.value = "loop";
+  mode.listeners.change();
+  for (const step of [2, 3, 4]) fireTimer();
+  finishFinalStroke();
+  assertComplete(4);
+  const pendingReplay = [...timers.values()][0];
+  assert.equal(pendingReplay.delay, 1600);
+  mode.value = "once";
+  mode.listeners.change();
+  assert.equal(timers.size, 0);
+  mode.value = "loop";
+  mode.listeners.change();
+  pendingReplay.callback();
+  assertComplete(4);
+  assert.equal(timers.size, 0);
+
+  // A replaced final SVG cannot affect the newly selected character.
+  elements.get("play").listeners.click();
+  for (const step of [2, 3, 4]) fireTimer();
+  const staleWatchdog = [...timers.values()][0];
+  const staleSvg = elements.get("stage").children[0];
+  const staleTarget = staleSvg.querySelector("animate") || staleSvg.querySelector(".stroke-current");
+  const staleType = staleTarget.tagName === "ANIMATE" ? "endEvent" : "animationend";
+  const staleEnd = staleTarget.listeners[staleType];
+  example.dataset.char = "好";
+  elements.get("examples").listeners.click({ target: example });
+  await flush();
+  staleEnd({ target: staleTarget });
+  staleWatchdog.callback();
+  assert.equal(elements.get("character").textContent, "好");
+  assert.equal(elements.get("step-label").textContent, "第 1 / 6 笔");
+  assert.equal(warnings.length, 0);
+
+  // Complete view clears both the fill and the existing special outlines,
+  // while static step cards retain their teaching highlight.
+  example.dataset.char = "亹";
+  elements.get("examples").listeners.click({ target: example });
+  await flush();
+  elements.get("sequence").listeners.click({ target: elements.get("sequence").children[9] });
+  elements.get("show-all").listeners.click();
+  assertComplete(22);
+  const outline = elements.get("stage").children[0].querySelectorAll(".stroke-done")[9];
+  assert.equal(outline.attributes.stroke, "#344c46");
+  assert.equal(elements.get("sequence").children[9].children[1].querySelector(".stroke-current").attributes.stroke, "#b55443");
+
+  // The CSS fallback also reports completion; a missing event becomes a
+  // fully visible static character rather than a stuck red final stroke.
+  elements.get("sequence").listeners.click({ target: elements.get("sequence").children[21] });
+  assert.equal(elements.get("stage").children[0].querySelector("animate"), null);
+  finishFinalStroke();
+  assertComplete(22);
+  elements.get("sequence").listeners.click({ target: elements.get("sequence").children[21] });
+  fireTimer();
+  assertComplete(22);
+  assert.match(elements.get("playback-status").textContent, /已使用静态显示/);
+  assert.equal(warnings.length, 1);
+  assert.equal(timers.size, 0);
+
+  elements.get("sequence").listeners.click({ target: elements.get("sequence").children[21] });
+  elements.get("tab-sequence").listeners.click();
+  assertComplete(22);
+  assert.equal(timers.size, 0);
+  elements.get("tab-stage").listeners.click();
+  assertComplete(22);
+
+  // Fresh startup with reduced motion must never wait for an animation event.
+  elements.clear(); timers.clear(); frames.clear();
+  window.HANZI_SHARDS = {};
+  window.matchMedia = () => ({ matches: true });
+  location.hash = "";
+  context = vm.createContext({ window, document, location, history, navigator: {}, console: testConsole, setTimeout });
+  for (const file of ["data/index.js", "data/dictionary.js", "data/audit-status.js", "app.js"]) {
+    vm.runInContext(fs.readFileSync(path.join(site, file), "utf8"), context);
+  }
+  await flush();
+  assert.equal(timers.size, 0);
+  elements.get("show-all").listeners.click();
+  assertComplete(5);
+  elements.get("previous").listeners.click();
+  elements.get("next").listeners.click();
+  assertComplete(5);
+  assert.equal(timers.size, 0);
+  console.log("Smoke test passed: lookup, completion colors, once/loop, manual controls, stale callbacks, fallbacks, and reduced motion");
 })().catch((error) => { console.error(error); process.exitCode = 1; });
